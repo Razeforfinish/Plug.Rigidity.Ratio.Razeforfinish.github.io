@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualisasi Rasio Kekakuan Sumbatan Tanah</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/d3-interpolate.v2.min.js"></script>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            background-color: #f8fafc;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+        }
+        .axis-label {
+            font-size: 0.9rem;
+            fill: #4b5563;
+        }
+        .tick text {
+            fill: #6b7280;
+            font-size: 0.8rem;
+        }
+        .zone-label {
+            font-size: 0.8rem;
+            font-weight: bold;
+            fill: #ffffff;
+            text-anchor: middle;
+        }
+        .slider-label {
+            font-size: 1rem;
+            color: #374151;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #be123c; /* Rose-700 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 3px solid #ffffff;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+        }
+        .point {
+            stroke: #1f2937;
+            stroke-width: 1.5px;
+        }
+        .point-label {
+            font-size: 0.75rem;
+            fill: #1f2937;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        .connector-line {
+            stroke: #4b5563;
+            stroke-width: 1.5px;
+        }
+        .tooltip {
+            position: absolute;
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .tooltip strong {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-4xl bg-white p-6 sm:p-8 rounded-xl shadow-md border border-gray-200">
+        <!-- Header -->
+        <div class="mb-4 text-center">
+            <h1 class="text-xl md:text-2xl font-bold text-gray-800">Memahami Kondisi Sumbatan Tanah (<i>Soil Plug</i>)</h1>
+            <p class="mt-2 text-base text-gray-600 max-w-2xl mx-auto">
+                Visualisasi ini memetakan rasio kekakuan (<i>D/B</i>) seiring bertambahnya kedalaman penetrasi tiang. Gunakan *slider* untuk melihat bagaimana diameter tiang yang berbeda memengaruhi kapan kondisi sumbatan kaku (<i>Rigid Zone</i>) tercapai.
+            </p>
+        </div>
+
+        <!-- Slider Controls -->
+        <div class="my-6 md:my-8 px-2 max-w-md mx-auto">
+            <label for="diameter-slider" class="block mb-2 text-center slider-label">Diameter Tiang Pancang: <span id="slider-value" class="font-bold text-rose-700 text-lg">0.3 m</span></label>
+            <input type="range" id="diameter-slider" min="0" max="4" value="0" step="1">
+        </div>
+
+        <!-- Chart Container -->
+        <div id="chart-container" class="chart-container"></div>
+        
+        <!-- Tooltip -->
+        <div id="tooltip" class="tooltip"></div>
+    </div>
+
+<script>
+    const data = [
+        { D: 0.3, depth: 0, ratio: 0.0 }, { D: 0.3, depth: 2, ratio: 6.7 }, { D: 0.3, depth: 4, ratio: 13.3 }, { D: 0.3, depth: 6, ratio: 20.0 }, { D: 0.3, depth: 8, ratio: 26.7 }, { D: 0.3, depth: 10, ratio: 33.3 },
+        { D: 0.4, depth: 0, ratio: 0.0 }, { D: 0.4, depth: 2, ratio: 5.0 }, { D: 0.4, depth: 4, ratio: 10.0 }, { D: 0.4, depth: 6, ratio: 15.0 }, { D: 0.4, depth: 8, ratio: 20.0 }, { D: 0.4, depth: 10, ratio: 25.0 },
+        { D: 0.6, depth: 0, ratio: 0.0 }, { D: 0.6, depth: 2, ratio: 3.3 }, { D: 0.6, depth: 4, ratio: 6.7 }, { D: 0.6, depth: 6, ratio: 10.0 }, { D: 0.6, depth: 8, ratio: 13.3 }, { D: 0.6, depth: 10, ratio: 16.7 },
+        { D: 0.8, depth: 0, ratio: 0.0 }, { D: 0.8, depth: 2, ratio: 2.5 }, { D: 0.8, depth: 4, ratio: 5.0 }, { D: 0.8, depth: 6, ratio: 7.5 }, { D: 0.8, depth: 8, ratio: 10.0 }, { D: 0.8, depth: 10, ratio: 12.5 },
+        { D: 1.0, depth: 0, ratio: 0.0 }, { D: 1.0, depth: 2, ratio: 2.0 }, { D: 1.0, depth: 4, ratio: 4.0 }, { D: 1.0, depth: 6, ratio: 6.0 }, { D: 1.0, depth: 8, ratio: 8.0 }, { D: 1.0, depth: 10, ratio: 10.0 }
+    ];
+    const diameters = [0.3, 0.4, 0.6, 0.8, 1.0];
+
+    const margin = { top: 20, right: 40, bottom: 50, left: 60 };
+    const container = document.getElementById('chart-container');
+    let width = container.clientWidth - margin.left - margin.right;
+    let height = container.clientHeight - margin.top - margin.bottom;
+
+    const svg = d3.select("#chart-container").append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear().domain([0, 35]).range([0, width]);
+    const y = d3.scaleLinear().domain([-0.5, 10.5]).range([height, 0]); // Inverted Y-axis
+
+    const rainbowColor = d3.scaleSequential(d3.interpolateTurbo).domain([35, 0]);
+
+    const defs = svg.append("defs");
+    const linearGradient = defs.append("linearGradient")
+        .attr("id", "rainbow-gradient")
+        .attr("x1", "0%").attr("y1", "0%").attr("x2", "100%").attr("y2", "0%");
+
+    linearGradient.selectAll("stop")
+        .data(d3.range(0, 1.01, 0.05))
+        .enter().append("stop")
+        .attr("offset", d => `${d*100}%`)
+        .attr("stop-color", d => rainbowColor(x.invert(width * d)));
+
+    svg.append("rect")
+        .attr("x", 0).attr("y", 0)
+        .attr("width", width).attr("height", height)
+        .style("fill", "url(#rainbow-gradient)");
+
+    svg.append("text").attr("class", "zone-label").attr("x", x(5)).attr("y", 20).text("CORING ZONE");
+    svg.append("text").attr("class", "zone-label").attr("x", x(17.5)).attr("y", 20).text("TRANSITION ZONE");
+    svg.append("text").attr("class", "zone-label").attr("x", x(30)).attr("y", 20).text("RIGID ZONE");
+
+    svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).tickSizeOuter(0));
+    svg.append("g").call(d3.axisLeft(y).tickValues(d3.range(0, 11, 2)).tickSizeOuter(0).tickFormat(d => d + " m"));
+
+    svg.append("text").attr("class", "axis-label").attr("text-anchor", "middle").attr("x", width / 2).attr("y", height + margin.bottom - 10).html("Rasio Kekakuan Sumbatan Tanah (<i>D/B</i>)");
+    svg.append("text").attr("class", "axis-label").attr("transform", "rotate(-90)").attr("y", 0 - margin.left + 15).attr("x", 0 - (height / 2)).attr("text-anchor", "middle").text("Kedalaman Penetrasi (m)");
+
+    const line = d3.line().x(d => x(d.ratio)).y(d => y(d.depth));
+    const path = svg.append("path").attr("class", "connector-line").attr("fill", "none");
+    const pointsGroup = svg.append("g");
+    const tooltip = d3.select("#tooltip");
+
+    function update(diameter) {
+        const currentData = data.filter(d => d.D === diameter);
+        
+        path.datum(currentData)
+            .transition().duration(500)
+            .attr("d", line);
+
+        const points = pointsGroup.selectAll(".point-group")
+            .data(currentData, d => d.depth);
+
+        points.exit().remove();
+
+        const enterPoints = points.enter().append("g").attr("class", "point-group");
+        enterPoints.append("circle").attr("class", "point");
+        enterPoints.append("text").attr("class", "point-label");
+
+        const allPoints = enterPoints.merge(points);
+
+        allPoints.transition().duration(500)
+            .attr("transform", d => `translate(${x(d.ratio)}, ${y(d.depth)})`);
+
+        allPoints.select("circle")
+            .attr("r", 7)
+            .attr("fill", d => rainbowColor(d.ratio));
+        
+        allPoints.select("text")
+            .attr("dy", y(9.8) - y(10.5)) // Position label above the point
+            .text(d => d.ratio.toFixed(1));
+
+        d3.select("#slider-value").text(`${diameter.toFixed(1)} m`);
+    }
+
+    d3.select("#diameter-slider").on("input", function() {
+        update(diameters[this.value]);
+    });
+
+    // Tooltip Logic
+    const bisectDepth = d3.bisector(d => d.depth).left;
+
+    svg.append("rect")
+        .attr("width", width)
+        .attr("height", height)
+        .style("fill", "none")
+        .style("pointer-events", "all")
+        .on("mouseover", () => tooltip.style("opacity", 1))
+        .on("mouseout", () => tooltip.style("opacity", 0))
+        .on("mousemove", mousemove);
+
+    function mousemove(event) {
+        const currentDiameter = diameters[d3.select("#diameter-slider").node().value];
+        const currentData = data.filter(d => d.D === currentDiameter);
+
+        const [pointerX, pointerY] = d3.pointer(event);
+        const depth0 = y.invert(pointerY);
+        
+        const i = bisectDepth(currentData, depth0, 1);
+        const d0 = currentData[i - 1];
+        const d1 = currentData[i];
+        if (!d0 || !d1) return;
+
+        const d = (depth0 - d0.depth) < (d1.depth - depth0) ? d0 : d1;
+
+        let zone = "N/A";
+        let zoneColor = "#6b7280";
+        if (d.ratio < 10) { zone = "Coring Zone"; zoneColor = "#ef4444"; } // Red
+        else if (d.ratio < 15) { zone = "Transition Zone (Early)"; zoneColor = "#f59e0b"; } // Orange-Yellow
+        else if (d.ratio < 25) { zone = "Transition Zone (Late)"; zoneColor = "#22c55e"; } // Green-Blue
+        else { zone = "Rigid Zone"; zoneColor = "#3b82f6"; } // Blue
+
+        tooltip.style("opacity", 0.95)
+            .style("left", (event.pageX + 15) + "px")
+            .style("top", (event.pageY - 28) + "px")
+            .html(
+                `<strong>Diameter:</strong> ${d.D.toFixed(1)} m<br>` +
+                `<strong>Kedalaman:</strong> ${d.depth.toFixed(1)} m<br>` +
+                `<strong>Rasio D/B:</strong> ${d.ratio.toFixed(1)}<br>` +
+                `<span style="color: ${zoneColor};"><strong>Zona: ${zone}</strong></span>`
+            );
+    }
+
+    // Initial render
+    update(diameters[0]);
+    
+</script>
+</body>
+</html>
